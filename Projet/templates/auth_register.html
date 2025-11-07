@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}Inscription{% endblock %}
+{% block content %}
+<h1>Créer un compte auteur</h1>
+<form method="post">
+<label>Email <input type="email" name="email" required></label><br>
+<label>Mot de passe <input type="password" name="password" required></label><br>
+<button type="submit">Créer le compte</button>
+</form>
+<p>Déjà un compte ? <a href="/auth/login">Connexion</a></p>
+{% endblock %}

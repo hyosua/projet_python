@@ -1,0 +1,26 @@
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{% block title %}App QCM{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<header>
+<nav>
+<a href="/">Accueil</a>
+<a href="/dashboard">Dashboard</a>
+<a href="/auth/login">Se connecter</a>
+<a href="/auth/register">Créer un compte</a>
+</nav>
+</header>
+<main>
+{% with messages = get_flashed_messages() %}
+{% if messages %}
+<ul class="flash">{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
+{% endif %}
+{% endwith %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

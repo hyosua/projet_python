@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Répondre{% endblock %}
+{% block content %}
+<h1>Répondre à la question #{{ q.num }}</h1>
+<article><pre>{{ q.statement }}</pre></article>
+{% if q.attachments %}
+<h3>Pièces</h3>
+<ul>{% for a in q.attachments %}<li><a href="{{ a }}" target="_blank">{{ a }}</a></li>{% endfor %}</ul>
+{% endif %}
+<form method="post" action="/q/{{ code }}/submit">
+<label>Votre e‑mail <input type="email" name="email" required></label><br>
+<label>Votre réponse<br><textarea name="answer" rows="6" required></textarea></label><br>
+<button type="submit">Envoyer</button>
+</form>
+{% endblock %}

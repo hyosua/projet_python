@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Nouvelle question{% endblock %}
+{% block content %}
+<h1>Nouvelle question</h1>
+<form method="post" action="/questions">
+<label>Numéro <input type="number" name="num" required></label><br>
+<label>Titre <input type="text" name="title" required></label><br>
+<label>Énoncé<br><textarea name="statement" rows="6" required></textarea></label><br>
+<label>Réponse attendue<br><textarea name="expected_answer" rows="4"></textarea></label><br>
+<label>Points obligatoires (JSON)<br><textarea name="required_points_json" rows="3">[]</textarea></label><br>
+<label>Points interdits (JSON)<br><textarea name="forbidden_points_json" rows="3">[]</textarea></label><br>
+<label>Pièces jointes (JSON d'URLs chemins)<br><textarea name="attachments_json" rows="2">[]</textarea></label><br>
+<button type="submit">Enregistrer</button>
+</form>
+{% endblock %}

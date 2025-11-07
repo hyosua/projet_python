@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}Résultat{% endblock %}
+{% block content %}
+<h1>Résultat</h1>
+<p>Score auto : <strong>{{ attempt.auto_score }}</strong>/100</p>
+<pre>{{ attempt.auto_feedback }}</pre>
+<p><a href="/">Retour</a></p>
+{% endblock %}

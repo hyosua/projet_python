@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Question {{ q.num }}{% endblock %}
+{% block content %}
+<h1>{{ q.title }} <small>(#{{ q.num }})</small></h1>
+<pre>{{ q.statement }}</pre>
+<p><strong>Réponse attendue :</strong> {{ q.expected_answer }}</p>
+<p><strong>Obligatoires :</strong> {{ q.required_points }}</p>
+<p><strong>Interdits :</strong> {{ q.forbidden_points }}</p>
+<form method="post" action="/questions/{{ q.num }}/new-link">
+<button type="submit">Générer un lien public</button>
+</form>
+{% endblock %}
