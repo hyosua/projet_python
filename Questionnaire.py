@@ -1,13 +1,17 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """
 APPLICATION DE CRÉATION ET D'ÉVALUATION DE QUESTIONS
 ====================================================
 Ce programme comprend deux parties principales :
 1. Création de questions avec interface graphique
-2. Évaluation automatique des réponses avec analyse IA
+2. Évaluation automatique des réponses avec analyse IA (Gemini ou Locale)
 
 Dépendances requises :
 pip install spacy
 python -m spacy download fr_core_news_md
+pip install google-generativeai
 
 Auteur: NAGOU, COLLETER, AUFAUVRE
 Date: 2025
@@ -22,6 +26,9 @@ from datetime import datetime
 import re
 from difflib import SequenceMatcher
 import json
+
+# Imports pour Gemini
+import google.generativeai as genai
 
 # ============================================================================
 # CONFIGURATION ET UTILITAIRES
@@ -106,18 +113,21 @@ class QuestionManager:
             return None
 
 # ============================================================================
-# ANALYSEUR DE RÉPONSES (IA Simplifiée)
+# ANALYSEUR DE RÉPONSES (IA Hybride : Gemini + Local)
 # ============================================================================
 
 class ReponseAnalyzer:
     """
     Analyseur intelligent de réponses
-    Utilise des techniques de NLP pour évaluer la qualité des réponses
+    Utilise Gemini si disponible, sinon les techniques NLP locales
     """
     
     def __init__(self):
         self.nlp = None
         self._init_nlp()
+        
+        self.gemini_model = None
+        self._init_gemini()
     
     def _init_nlp(self):
         """Initialise le modèle spaCy si disponible"""
@@ -131,6 +141,21 @@ class ReponseAnalyzer:
         except ImportError:
             print("spaCy non installé. Utilisation du mode basique.")
             self.nlp = None
+
+    def _init_gemini(self):
+        """Initialise le modèle Gemini si la clé API est disponible"""
+        try:
+            api_key = os.environ.get("GOOGLE_API_KEY")
+            if api_key:
+                genai.configure(api_key=api_key)
+                # Utilisation d'un modèle rapide
+                self.gemini_model = genai.GenerativeModel('gemini-pro')
+                print("✅ Modèle Gemini initialisé avec succès.")
+            else:
+                print("⚠️ Clé API Gemini (GOOGLE_API_KEY) non trouvée. Utilisation du mode local.")
+        except Exception as e:
+            print(f"❌ Erreur lors de l'initialisation de Gemini : {e}")
+            self.gemini_model = None
     
     def normaliser_texte(self, texte):
         """Normalise le texte pour comparaison"""
@@ -143,16 +168,13 @@ class ReponseAnalyzer:
         """Extrait les mots-clés importants du texte"""
         if self.nlp:
             doc = self.nlp(texte)
-            # Extraire noms, verbes, adjectifs
             mots_cles = [token.lemma_ for token in doc 
                         if token.pos_ in ['NOUN', 'VERB', 'ADJ'] 
                         and not token.is_stop]
             return set(mots_cles)
         else:
-            # Mode basique sans spaCy
             texte_norm = self.normaliser_texte(texte)
             mots = texte_norm.split()
-            # Filtrer les mots courts (stop words basiques)
             stop_words = {'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 
                          'à', 'et', 'ou', 'est', 'sont', 'dans', 'sur', 'pour'}
             return set(mot for mot in mots if len(mot) > 3 and mot not in stop_words)
@@ -162,9 +184,11 @@ class ReponseAnalyzer:
         if self.nlp:
             doc1 = self.nlp(texte1)
             doc2 = self.nlp(texte2)
+            # Gérer les vecteurs vides
+            if not doc1.has_vector or not doc2.has_vector:
+                return SequenceMatcher(None, texte1, texte2).ratio()
             return doc1.similarity(doc2)
         else:
-            # Similarité basique avec SequenceMatcher
             texte1_norm = self.normaliser_texte(texte1)
             texte2_norm = self.normaliser_texte(texte2)
             return SequenceMatcher(None, texte1_norm, texte2_norm).ratio()
@@ -184,10 +208,8 @@ class ReponseAnalyzer:
             element_norm = self.normaliser_texte(element)
             mots_cles_element = self.extraire_mots_cles(element)
             
-            # Vérification directe
             if element_norm in reponse_norm:
                 resultats['presents'].append(element)
-            # Vérification par mots-clés
             elif mots_cles_element and len(mots_cles_element & mots_cles_reponse) >= len(mots_cles_element) * 0.7:
                 resultats['partiels'].append(element)
             else:
@@ -206,10 +228,105 @@ class ReponseAnalyzer:
                 erreurs_detectees.append(erreur)
         
         return erreurs_detectees
-    
+
+    # --- MÉTHODE PRINCIPALE D'ÉVALUATION (ROUTEUR) ---
     def evaluer_reponse(self, question_data, reponse_user):
         """
-        Évalue complètement une réponse utilisateur
+        Évalue la réponse en utilisant Gemini si possible,
+        sinon utilise l'analyseur local.
+        Retourne (resultats, prompt_utilise)
+        """
+        if self.gemini_model:
+            try:
+                print("Tentative d'évaluation avec Gemini...")
+                return self.evaluer_reponse_gemini(question_data, reponse_user)
+            except Exception as e:
+                print(f"Erreur évaluation Gemini: {e}. Bascule en mode local.")
+                resultats = self.evaluer_reponse_local(question_data, reponse_user)
+                return resultats, f"Erreur Gemini ({e}) - Mode local utilisé."
+        else:
+            print("Évaluation en mode local (Gemini non configuré).")
+            resultats = self.evaluer_reponse_local(question_data, reponse_user)
+            return resultats, "Mode local (Gemini non configuré)."
+
+    # --- NOUVELLE MÉTHODE : ÉVALUATION PAR GEMINI ---
+    def _construire_prompt_gemini(self, question_data, reponse_user):
+        """Construit le prompt pour l'évaluation par Gemini"""
+        
+        prompt = f"""
+        Tu es un assistant d'évaluation pédagogique. Ton rôle est d'évaluer la réponse d'un étudiant à une question donnée, en te basant sur des critères stricts.
+
+        Voici la question :
+        Titre : {question_data.get('titre', 'N/A')}
+        Énoncé : {question_data.get('enonce', 'N/A')}
+
+        Voici les critères d'évaluation :
+        1.  Réponse attendue (modèle) : {question_data.get('reponse_attendue', 'N/A')}
+        2.  Points obligatoires (doivent être présents) : {', '.join(question_data.get('points_obligatoires', [])) or 'N/A'}
+        3.  Erreurs à éviter (ne doivent pas être présents) : {', '.join(question_data.get('erreurs_a_eviter', [])) or 'N/A'}
+
+        Voici la réponse de l'étudiant :
+        "{reponse_user}"
+
+        TA TÂCHE :
+        Évalue la réponse de l'étudiant en fonction des critères.
+        Fournis une analyse structurée au format JSON EXACT.
+        Le JSON doit contenir les clés suivantes :
+        -   "score": Un score numérique de 0 à 100.
+        -   "est_correct": Un booléen (true/false) indiquant si la réponse est globalement satisfaisante (score >= 60 et pas d'erreurs majeures).
+        -   "elements_presents": Une liste de strings des points obligatoires que tu as trouvés dans la réponse.
+        -   "elements_partiels": Une liste de strings des points obligatoires qui sont mentionnés mais pas assez développés.
+        -   "elements_absents": Une liste de strings des points obligatoires qui manquent.
+        -   "erreurs_detectees": Une liste de strings des "erreurs à éviter" que tu as trouvées.
+        -   "suggestions": Une liste de strings donnant 1 ou 2 conseils clés à l'étudiant pour s'améliorer, basés sur les éléments absents ou les erreurs.
+        
+        Ne renvoie QUE le JSON, sans aucun autre texte avant ou après.
+        """
+        # Nettoyer les espaces multiples pour un prompt plus propre
+        return ' '.join(prompt.split())
+
+    def evaluer_reponse_gemini(self, question_data, reponse_user):
+        """Évalue la réponse en utilisant l'API Gemini"""
+        
+        prompt = self._construire_prompt_gemini(question_data, reponse_user)
+        
+        # Demander explicitement du JSON
+        generation_config = genai.types.GenerationConfig(
+            response_mime_type="application/json"
+        )
+        
+        response = self.gemini_model.generate_content(
+            prompt,
+            generation_config=generation_config
+        )
+        
+        try:
+            resultats_json_str = response.text
+            resultats = json.loads(resultats_json_str)
+            
+            # S'assurer que les clés minimales existent
+            resultats.setdefault('est_correct', resultats.get('score', 0) >= 60)
+            resultats.setdefault('similarite', 0) # Gemini ne donne pas ce score
+            resultats.setdefault('elements_presents', [])
+            resultats.setdefault('elements_partiels', [])
+            resultats.setdefault('elements_absents', [])
+            resultats.setdefault('erreurs_detectees', [])
+            resultats.setdefault('suggestions', ["Analyse effectuée par Gemini."])
+            resultats.setdefault('score', 0)
+            
+            print("Analyse Gemini réussie.")
+            return resultats, prompt
+
+        except (json.JSONDecodeError, AttributeError, ValueError) as e:
+            print(f"Erreur de parsing de la réponse Gemini: {e}")
+            print(f"Réponse brute: {response.text}")
+            raise Exception(f"Erreur parsing JSON de Gemini. Réponse: {response.text}")
+
+
+    # --- ANCIENNE MÉTHODE (RENOMMÉE) : ÉVALUATION LOCALE ---
+    def evaluer_reponse_local(self, question_data, reponse_user):
+        """
+        Évalue complètement une réponse utilisateur (MODE LOCAL)
         Retourne un dictionnaire avec l'analyse détaillée
         """
         reponse_attendue = question_data.get('reponse_attendue', '')
@@ -505,7 +622,7 @@ class EvaluationQuestionGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("📊 Évaluation de Questions")
-        self.root.geometry("1000x700")
+        self.root.geometry("1000x800") # Augmenté la hauteur
         self.root.configure(bg=Config.COLOR_BG)
         
         self.manager = QuestionManager()
@@ -537,8 +654,9 @@ class EvaluationQuestionGUI:
         main_container.pack(fill='both', expand=True, padx=20, pady=10)
         
         # Panneau gauche : Liste des questions
-        left_panel = tk.Frame(main_container, bg='white', relief='solid', borderwidth=1)
-        left_panel.pack(side='left', fill='both', expand=True, padx=(0, 10))
+        left_panel = tk.Frame(main_container, bg='white', relief='solid', borderwidth=1, width=300)
+        left_panel.pack(side='left', fill='both', expand=False, padx=(0, 10))
+        left_panel.pack_propagate(False) # Empêche le panneau de rétrécir
         
         list_title = tk.Label(left_panel, text="📋 Liste des Questions", 
                              bg='white', font=('Arial', 14, 'bold'))
@@ -576,9 +694,21 @@ class EvaluationQuestionGUI:
         )
         btn_refresh.pack(pady=10)
         
-        # Panneau droit : Détails et réponse
-        right_panel = tk.Frame(main_container, bg='white', relief='solid', borderwidth=1)
-        right_panel.pack(side='right', fill='both', expand=True)
+        # Panneau droit : Détails et réponse (avec défilement)
+        right_canvas = tk.Canvas(main_container, bg='white', highlightthickness=0)
+        right_scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=right_canvas.yview)
+        right_panel = tk.Frame(right_canvas, bg='white') # Le 'panel' devient 'frame'
+        
+        right_panel.bind(
+            "<Configure>",
+            lambda e: right_canvas.configure(scrollregion=right_canvas.bbox("all"))
+        )
+
+        right_canvas.create_window((0, 0), window=right_panel, anchor="nw")
+        right_canvas.configure(yscrollcommand=right_scrollbar.set)
+
+        right_canvas.pack(side="left", fill="both", expand=True)
+        right_scrollbar.pack(side="right", fill="y")
         
         # Zone de détails de la question
         details_frame = tk.Frame(right_panel, bg='white')
@@ -591,7 +721,7 @@ class EvaluationQuestionGUI:
             font=('Arial', 14, 'bold'),
             bg='white',
             fg=Config.COLOR_PRIMARY,
-            wraplength=450,
+            wraplength=600,
             justify='left'
         )
         self.question_titre_label.pack(anchor='w', pady=(0, 10))
@@ -665,7 +795,6 @@ class EvaluationQuestionGUI:
         for widget in self.resultats_frame.winfo_children():
             widget.destroy()
         
-        # Récupérer le numéro de la question
         selected_text = self.questions_listbox.get(selection[0])
         if "Aucune question" in selected_text:
             return
@@ -675,7 +804,6 @@ class EvaluationQuestionGUI:
             self.question_selectionnee = self.manager.load_question(question_num)
             
             if self.question_selectionnee:
-                # Afficher les détails
                 self.question_titre_label.config(
                     text=f"Q{self.question_selectionnee['numero']} - {self.question_selectionnee['titre']}"
                 )
@@ -703,14 +831,27 @@ class EvaluationQuestionGUI:
             messagebox.showwarning("Attention", "Veuillez saisir une réponse")
             return
         
-        # Analyser la réponse
-        resultats = self.analyzer.evaluer_reponse(self.question_selectionnee, reponse_user)
+        # --- MODIFICATION ---
+        try:
+            # L'analyseur retourne maintenant (resultats, prompt)
+            self.btn_evaluer.config(text="Évaluation en cours...", state="disabled")
+            self.root.update_idletasks() # Forcer la mise à jour de l'UI
+            
+            resultats, prompt_utilise = self.analyzer.evaluer_reponse(
+                self.question_selectionnee, reponse_user
+            )
+            
+            # Afficher les résultats
+            self.afficher_resultats(resultats, prompt_utilise) # Passer le prompt
         
-        # Afficher les résultats
-        self.afficher_resultats(resultats)
+        except Exception as e:
+            messagebox.showerror("Erreur d'analyse", f"Une erreur est survenue lors de l'évaluation : {e}")
+        finally:
+            self.btn_evaluer.config(text="🔍 Évaluer ma réponse", state="normal")
+        # --- FIN MODIFICATION ---
     
-    def afficher_resultats(self, resultats):
-        """Affiche les résultats de l'évaluation"""
+    def afficher_resultats(self, resultats, prompt_utilise):
+        """Affiche les résultats de l'évaluation + le prompt"""
         # Nettoyer
         for widget in self.resultats_frame.winfo_children():
             widget.destroy()
@@ -729,9 +870,13 @@ class EvaluationQuestionGUI:
         status_label.pack(pady=10)
         
         # Score
+        score_text = f"Score : {resultats['score']}/100"
+        if resultats['similarite'] > 0: # N'afficher que si pertinent (mode local)
+            score_text += f" | Similarité : {resultats['similarite']}%"
+
         score_label = tk.Label(
             self.resultats_frame,
-            text=f"Score : {resultats['score']}/100 | Similarité : {resultats['similarite']}%",
+            text=score_text,
             font=('Arial', 11),
             bg='white'
         )
@@ -782,9 +927,34 @@ class EvaluationQuestionGUI:
                     text=f"  • {suggestion}",
                     font=('Arial', 9),
                     bg='white',
-                    wraplength=400,
+                    wraplength=550,
                     justify='left'
                 ).pack(anchor='w', padx=10)
+
+        # --- NOUVELLE PARTIE : Affichage du Prompt ---
+        ttk.Separator(self.resultats_frame, orient='horizontal').pack(fill='x', pady=(20, 10))
+            
+        tk.Label(
+            self.resultats_frame,
+            text="🤖 Contexte de l'évaluation IA :",
+            font=('Arial', 11, 'bold'),
+            bg='white',
+            fg=Config.COLOR_PRIMARY
+        ).pack(anchor='w', pady=(5, 5))
+        
+        prompt_display = scrolledtext.ScrolledText(
+            self.resultats_frame,
+            height=6,
+            wrap='word',
+            font=('Courier', 9, 'italic'),
+            bg='#f8f9fa',
+            fg='#555'
+        )
+        prompt_display.pack(fill='x', expand=True, pady=5)
+        prompt_display.insert('1.0', prompt_utilise)
+        prompt_display.config(state='disabled')
+        # --- FIN NOUVELLE PARTIE ---
+
     
     def _afficher_section(self, titre, elements, couleur):
         """Affiche une section de résultats"""
@@ -802,7 +972,7 @@ class EvaluationQuestionGUI:
                 text=f"  • {elem}",
                 font=('Arial', 9),
                 bg='white',
-                wraplength=400,
+                wraplength=550,
                 justify='left'
             ).pack(anchor='w', padx=10)
 
@@ -871,7 +1041,7 @@ class MenuPrincipal:
         # Footer
         footer = tk.Label(
             self.root,
-            text="Développé avec Python & ❤️",
+            text="Développé avec Python & ❤️ (Boosté par Gemini)",
             font=('Arial', 9, 'italic'),
             bg=Config.COLOR_BG,
             fg='gray'
@@ -903,18 +1073,12 @@ if __name__ == "__main__":
     print("\n📚 Fonctionnalités:")
     print("  • Création de questions avec interface graphique")
     print("  • Sauvegarde automatique en format pickle")
-    print("  • Évaluation intelligente des réponses")
+    print("  • Évaluation intelligente des réponses (Gemini ou Locale)")
     print("  • Analyse NLP avec spaCy (optionnel)")
-    print("\n💡 Astuce: Pour de meilleurs résultats, installez spaCy:")
-    print("   pip install spacy")
-    print("   python -m spacy download fr_core_news_md")
+    print("\n💡 Astuce: Pour l'évaluation IA, configurez GOOGLE_API_KEY")
+    print("   pip install google-generativeai")
     print("\n" + "=" * 60 + "\n")
     
     # Lancer l'application
     app = MenuPrincipal()
     app.run()
-
-
-
-
-
