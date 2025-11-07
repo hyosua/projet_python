@@ -120,6 +120,57 @@ Au lancement, vérifiez la sortie de votre terminal. Vous devriez voir : ✅ Mod
 
 Utilisez le menu principal pour naviguer entre la création de questions et l'évaluation.
 
+## Exemple d'utilisation:
+📝 Partie A : Création de la Question (Vue 🧑‍🏫 Enseignant)
+Lancez le programme : python Questionnaire.py
+
+Dans le menu principal, cliquez sur "📝 Créer une Question".
+
+Vous remplissez le formulaire avec les informations suivantes :
+
+🔢 Numéro de question: (Laissé à 1, géré automatiquement)
+
+📌 Titre de la question:
+
+Causes de la Révolution Française
+
+📄 Énoncé:
+
+Expliquez brièvement les trois principales causes (une économique, une sociale, une idéologique) qui ont mené à la Révolution Française de 1789.
+
+📎 Fichiers joints: (On laisse vide pour cet exemple)
+
+✅ Réponse attendue:
+
+Les causes principales sont la grave crise financière de l'État (dette due aux guerres, dépenses de la cour), l'injustice sociale et fiscale (privilèges de la noblesse et du clergé, Tiers-État payant tous les impôts), et la diffusion des idées des Lumières (remise en cause de la monarchie absolue et de l'Église).
+
+⭐ Points obligatoires: (Un par ligne)
+
+Crise financière (ou dette) Injustice fiscale (ou privilèges) Idées des Lumières
+
+❌ Erreurs à éviter: (Un par ligne)
+
+Napoléon Prise de la Bastille (c'est une conséquence, pas une cause)
+
+Cliquez sur "💾 Sauvegarder la question". Vous recevez un message de succès.
+
+Fermez la fenêtre de création.
+
+3. 📊 Partie B : Évaluation de la Réponse (Vue 🎓 Étudiant)
+De retour au menu principal, cliquez sur "📊 Évaluer des Réponses".
+
+La fenêtre s'ouvre. Dans la "📋 Liste des Questions" à gauche, vous cliquez sur :
+
+Q1 - Causes de la Révolution Française
+
+La question s'affiche. L'étudiant lit l'énoncé et écrit sa réponse dans la zone "✍️ Votre réponse:" :
+
+La Révolution a eu lieu car le roi dépensait trop d'argent pour ses fêtes, ce qui a créé une grosse dette. De plus, les pauvres payaient des impôts mais les riches ne payaient rien. Les philosophes ont aussi écrit des livres pour dire que le peuple devait avoir le pouvoir.
+
+L'étudiant clique sur "🔍 Évaluer ma réponse"
+
+  
+
 🆘 Dépannage (Erreurs courantes)
 Erreur : Mode local (Gemini non configuré) s'affiche dans le contexte de l'IA.
 
