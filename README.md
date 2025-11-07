@@ -8,6 +8,8 @@ AUFAUVRE
 
 Ce projet est une application Python (avec interface graphique Tkinter) conçue pour les enseignants et les étudiants. Elle permet de créer des questions d'examen complexes et d'évaluer automatiquement les réponses des étudiants à l'aide de l'IA (Google Gemini).
 
+Même si vous n'avez pas de clé gémini, il est conseillé d'installer google-generativeai pour que l'application fonctionne. L'application se lancera alors en mode local (sans api gemini)
+
 ## 📚 Fonctionnalités
 
 L'application est divisée en deux modules accessibles depuis un menu principal :
@@ -68,7 +70,9 @@ Bash
 # 4. Téléchargez le modèle de langue français pour spaCy
 python -m spacy download fr_core_news_md
 3. 🚀 Configuration de l'API Gemini (OPTIONNEL)
-L'APPICATION FONCTIONNERA SANS API  
+
+L'APPICATION FONCTIONNERA SANS API MAIS IL FAUT INSTALLER GOOGLE-GENERATIVEAI
+
 Pour que l'évaluation "intelligente" fonctionne, vous devez fournir une clé API Google Gemini.
 
 Obtenir une clé API :
